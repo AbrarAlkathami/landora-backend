@@ -1,0 +1,1 @@
+from landora_backend.models.parcel import Parcel
