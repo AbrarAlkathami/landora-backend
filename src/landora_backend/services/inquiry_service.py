@@ -1,12 +1,87 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from landora_backend.models.inquiry import Inquiry
 from landora_backend.schemas.inquiry import InquiryCreate, InquiryUpdate
 
 
-def get_inquiries(db: Session) -> list[Inquiry]:
+def get_inquiries(
+    db: Session,
+    page: int = 1,
+    page_size: int = 10,
+    search: str | None = None,
+    status: str | None = None,
+    area_of_city_wanted: str | None = None,
+    land_type_wanted: str | None = None,
+    prefers: str | None = None,
+):
     statement = select(Inquiry)
-    return list(db.scalars(statement).all())
+
+    if search:
+        search_value = f"%{search.strip()}%"
+
+        statement = statement.where(
+            or_(
+                Inquiry.inquiry_id.ilike(search_value),
+                Inquiry.investor_name.ilike(search_value),
+                Inquiry.phone.ilike(search_value),
+                Inquiry.wants_to.ilike(search_value),
+                Inquiry.intent.ilike(search_value),
+            )
+        )
+
+    if status:
+        statement = statement.where(
+            func.lower(Inquiry.status) == status.lower()
+        )
+
+    if area_of_city_wanted:
+        statement = statement.where(
+            func.lower(Inquiry.area_of_city_wanted)
+            == area_of_city_wanted.lower()
+        )
+
+    if land_type_wanted:
+        statement = statement.where(
+            func.lower(Inquiry.land_type_wanted)
+            == land_type_wanted.lower()
+        )
+
+    if prefers:
+        statement = statement.where(
+            func.lower(Inquiry.prefers) == prefers.lower()
+        )
+
+    count_statement = (
+        select(func.count())
+        .select_from(statement.subquery())
+    )
+
+    total = db.scalar(count_statement) or 0
+
+    offset = (page - 1) * page_size
+
+    statement = (
+        statement
+        .order_by(Inquiry.date.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+
+    items = list(db.scalars(statement).all())
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
 
 
 def get_inquiry(db: Session, inquiry_id: str) -> Inquiry | None:
