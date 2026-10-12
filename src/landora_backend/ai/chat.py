@@ -12,14 +12,24 @@ from landora_backend.vector.search import search_inquiries, search_parcels
 client = OpenAI(api_key=settings.openai_api_key)
 
 
-def answer_question(question: str) -> dict:
+def answer_question(
+    question: str,
+    mode: str = "investor",
+) -> dict:
     filters = extract_filters(question)
 
     land_type = filters.land_type
     area = filters.area_of_city
 
-    is_parcel_question = filters.target in ("parcel", "both")
-    is_inquiry_question = filters.target in ("inquiry", "both")
+    if mode == "investor":
+        # Investor chatbot only has access to parcels
+        is_parcel_question = True
+        is_inquiry_question = False
+
+    else:
+        # Admin chatbot can access both
+        is_parcel_question = filters.target in ("parcel", "both")
+        is_inquiry_question = filters.target in ("inquiry", "both")
 
     # Always defined
     inquiry_context = ""
@@ -136,11 +146,33 @@ def answer_question(question: str) -> dict:
             limit=5,
         )
 
-        selected_parcels = [
-            result.payload
+        parcel_ids = [
+            result.payload.get("parcel_id")
             for result in parcel_results
-            if result.payload
+            if result.payload and result.payload.get("parcel_id")
         ]
+
+        db = SessionLocal()
+
+        try:
+            exact_parcels = search_parcels_exact(
+                db,
+                parcel_ids=parcel_ids,
+            )
+
+            parcels_by_id = {
+                parcel.parcel_id: parcel
+                for parcel in exact_parcels
+            }
+
+            selected_parcels = [
+                parcels_by_id[parcel_id]
+                for parcel_id in parcel_ids
+                if parcel_id in parcels_by_id
+            ]
+
+        finally:
+            db.close()
 
         parcel_context = "\n\n".join(
             result.payload["text"]
@@ -151,38 +183,63 @@ def answer_question(question: str) -> dict:
     # -------------------------
     # FINAL LLM ANSWER
     # -------------------------
-    prompt = f"""
-You are Landora, an AI assistant for a Riyadh real estate land portfolio.
+    if mode == "investor":
+        prompt = f"""
+    You are Landora, an AI assistant for investors looking for land in Riyadh.
 
-Answer ONLY using the supplied Landora data.
+    Answer ONLY using the supplied parcel data.
 
-Rules:
-- Never invent data.
-- Never claim there are no matches if matching records are provided.
-- Answer in the same language as the user.
-- Keep the answer concise and useful.
+    Rules:
+    - Never invent data.
+    - Never claim there are no matches if matching records are provided.
+    - Help the user discover suitable land parcels.
+    - You do NOT have access to investor inquiries or internal company pipeline data.
+    - Never discuss or expose other investors or their inquiries.
+    - Answer in the same language as the user.
+    - Keep the answer concise and useful.
 
-IMPORTANT UI RULES:
-- Parcel records will be displayed separately as UI cards.
-- If parcel records are provided, DO NOT list parcel IDs, districts, prices, sizes,
-  statuses, or other parcel details in the text response.
-- Only give a short natural-language summary of the results.
-- Example: "I found 12 residential parcels matching your criteria."
-- Do not repeat information that will already appear in the parcel cards.
+    IMPORTANT UI RULES:
+    - Parcel records will be displayed separately as UI cards.
+    - If parcel records are provided, DO NOT list parcel IDs, districts, prices, sizes,
+    statuses, or other parcel details in the text response.
+    - Only give a short natural-language summary.
+    - Do not repeat information already shown in the parcel cards.
 
-- Investor inquiries will also be displayed separately as UI cards.
-- If inquiry records are provided, do not list each inquiry in the text response.
-- Only summarize the result.
+    PARCEL DATA:
+    {parcel_context or "No parcel records retrieved."}
 
-PARCEL DATA:
-{parcel_context or "No parcel records retrieved."}
+    USER QUESTION:
+    {question}
+    """
 
-INVESTOR INQUIRY DATA:
-{inquiry_context or "No inquiry records retrieved."}
+    else:
+        prompt = f"""
+    You are Landora, an AI assistant for the Sarj Real Estate admin team.
 
-USER QUESTION:
-{question}
-"""
+    Answer ONLY using the supplied Landora data.
+
+    Rules:
+    - Never invent data.
+    - Never claim there are no matches if matching records are provided.
+    - You may answer questions about parcels and investor inquiries.
+    - Answer in the same language as the user.
+    - Keep the answer concise and useful.
+
+    IMPORTANT UI RULES:
+    - Parcel records will be displayed separately as UI cards.
+    - Investor inquiries will be displayed separately as UI cards.
+    - Do not repeat individual parcel or inquiry details in the text response.
+    - Only provide a concise summary.
+
+    PARCEL DATA:
+    {parcel_context or "No parcel records retrieved."}
+
+    INVESTOR INQUIRY DATA:
+    {inquiry_context or "No inquiry records retrieved."}
+
+    USER QUESTION:
+    {question}
+    """
 
     response = client.responses.create(
         model="gpt-5-mini",
@@ -250,5 +307,5 @@ USER QUESTION:
     return {
         "answer": response.output_text,
         "parcels": parcels,
-        "inquiries": inquiries,
+        "inquiries": inquiries if mode == "admin" else [],
     }

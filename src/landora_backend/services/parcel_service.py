@@ -73,7 +73,7 @@ def get_parcels(
         "total_pages": total_pages,
     }
 
-    
+
 def get_parcel(db: Session, parcel_id: str) -> Parcel | None:
     return db.get(Parcel, parcel_id)
 
@@ -109,14 +109,20 @@ def delete_parcel(db: Session, parcel: Parcel) -> None:
     db.commit()
 
 def search_parcels_exact(
-    db,
+    db: Session,
     land_type: str | None = None,
     area_of_city: str | None = None,
     listing_type: str | None = None,
     status: str | None = None,
     max_total_price: float | None = None,
+    parcel_ids: list[str] | None = None,
 ):
     query = select(Parcel)
+
+    if parcel_ids:
+        query = query.where(
+            Parcel.parcel_id.in_(parcel_ids)
+        )
 
     if land_type:
         query = query.where(
