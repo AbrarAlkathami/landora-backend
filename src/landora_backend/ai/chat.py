@@ -3,6 +3,7 @@ import re
 
 from openai import OpenAI
 from landora_backend.ai.comparison import comparison_instructions
+from landora_backend.ai.admin import answer_admin_question
 
 from landora_backend.ai.filter_extractor import QueryFilters, extract_filters
 from landora_backend.core.config import settings
@@ -20,6 +21,8 @@ def answer_question(
     mode: str = "investor",
     parcel_ids: list[str] | None = None,
 ) -> dict:
+    if mode == "admin":
+        return answer_admin_question(question, client)
     explicit_comparison = mode == "investor" and parcel_ids and len(set(parcel_ids)) == 2 and re.search(r"compare|comparison|قارن|مقارنة", question, re.IGNORECASE)
     filters = QueryFilters(target="parcel") if parcel_ids else extract_filters(question)
 
