@@ -159,10 +159,20 @@ Answer ONLY using the supplied Landora data.
 Rules:
 - Never invent data.
 - Never claim there are no matches if matching records are provided.
-- Mention parcel IDs when discussing parcels.
-- Mention inquiry IDs when discussing investors.
 - Answer in the same language as the user.
 - Keep the answer concise and useful.
+
+IMPORTANT UI RULES:
+- Parcel records will be displayed separately as UI cards.
+- If parcel records are provided, DO NOT list parcel IDs, districts, prices, sizes,
+  statuses, or other parcel details in the text response.
+- Only give a short natural-language summary of the results.
+- Example: "I found 12 residential parcels matching your criteria."
+- Do not repeat information that will already appear in the parcel cards.
+
+- Investor inquiries will also be displayed separately as UI cards.
+- If inquiry records are provided, do not list each inquiry in the text response.
+- Only summarize the result.
 
 PARCEL DATA:
 {parcel_context or "No parcel records retrieved."}
