@@ -94,6 +94,8 @@ def update_inquiry(
     inquiry_data: InquiryUpdate,
     db: DBSession,
 ):
+    if inquiry_data.selected_parcel_id and not db.get(Parcel, inquiry_data.selected_parcel_id):
+        raise HTTPException(status_code=422, detail="Selected parcel does not exist")
     inquiry = inquiry_service.get_inquiry(db, inquiry_id)
 
     if not inquiry:

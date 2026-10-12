@@ -61,6 +61,7 @@ class InquiryCreate(InquiryBase):
 
 
 class InquiryUpdate(BaseModel):
+    selected_parcel_id: str | None = None
     date: datetime.date | None = None
     investor_name: str | None = None
     phone: str | None = None
