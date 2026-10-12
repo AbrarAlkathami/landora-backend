@@ -1,6 +1,10 @@
-from openai import OpenAI
+from __future__ import annotations
+import re
 
-from landora_backend.ai.filter_extractor import extract_filters
+from openai import OpenAI
+from landora_backend.ai.comparison import comparison_instructions
+
+from landora_backend.ai.filter_extractor import QueryFilters, extract_filters
 from landora_backend.core.config import settings
 from landora_backend.core.database import SessionLocal
 from landora_backend.services.inquiry_service import search_inquiries_exact
@@ -8,15 +12,16 @@ from landora_backend.services.parcel_service import search_parcels_exact
 from landora_backend.vector.documents import inquiry_to_text, parcel_to_text
 from landora_backend.vector.search import search_inquiries, search_parcels
 
-
 client = OpenAI(api_key=settings.openai_api_key)
 
 
 def answer_question(
     question: str,
     mode: str = "investor",
+    parcel_ids: list[str] | None = None,
 ) -> dict:
-    filters = extract_filters(question)
+    explicit_comparison = mode == "investor" and parcel_ids and len(set(parcel_ids)) == 2 and re.search(r"compare|comparison|قارن|مقارنة", question, re.IGNORECASE)
+    filters = QueryFilters(target="parcel") if parcel_ids else extract_filters(question)
 
     land_type = filters.land_type
     area = filters.area_of_city
@@ -54,8 +59,7 @@ def answer_question(
             selected_inquiries = exact_inquiries
 
             inquiry_context = "\n\n".join(
-                inquiry_to_text(inquiry)
-                for inquiry in exact_inquiries
+                inquiry_to_text(inquiry) for inquiry in exact_inquiries
             )
 
         finally:
@@ -68,9 +72,7 @@ def answer_question(
         )
 
         selected_inquiries = [
-            result.payload
-            for result in inquiry_results
-            if result.payload
+            result.payload for result in inquiry_results if result.payload
         ]
 
         inquiry_context = "\n\n".join(
@@ -90,7 +92,20 @@ def answer_question(
         or filters.max_total_price is not None
     )
 
-    if is_parcel_question and has_parcel_filters:
+    if is_parcel_question and parcel_ids:
+        # Explicit details/comparisons must use current database records, not vector similarity.
+        db = SessionLocal()
+        try:
+            selected_parcels = search_parcels_exact(db, parcel_ids=parcel_ids)
+            by_id = {parcel.parcel_id: parcel for parcel in selected_parcels}
+            selected_parcels = [by_id[parcel_id] for parcel_id in dict.fromkeys(parcel_ids) if parcel_id in by_id]
+            parcel_context = "\n\n".join(
+                parcel_to_text(parcel) for parcel in selected_parcels
+            )
+        finally:
+            db.close()
+
+    elif is_parcel_question and has_parcel_filters:
         db = SessionLocal()
 
         try:
@@ -107,10 +122,7 @@ def answer_question(
 
             # SQL + semantic ranking
             if filters.semantic_query and exact_parcels:
-                parcel_ids = [
-                    parcel.parcel_id
-                    for parcel in exact_parcels
-                ]
+                parcel_ids = [parcel.parcel_id for parcel in exact_parcels]
 
                 semantic_results = search_parcels(
                     filters.semantic_query,
@@ -118,23 +130,16 @@ def answer_question(
                     parcel_ids=parcel_ids,
                 )
 
-                selected_parcels = [
-                    result.payload
-                    for result in semantic_results
-                    if result.payload
-                ]
-
-                parcel_context = "\n\n".join(
-                    result.payload["text"]
-                    for result in semantic_results
-                    if result.payload and result.payload.get("text")
-                )
+                by_id = {parcel.parcel_id: parcel for parcel in exact_parcels}
+                selected_parcels = [by_id[result.payload["parcel_id"]]
+                                    for result in semantic_results
+                                    if result.payload and result.payload.get("parcel_id") in by_id]
+                parcel_context = "\n\n".join(parcel_to_text(parcel) for parcel in selected_parcels)
 
             # SQL only
             else:
                 parcel_context = "\n\n".join(
-                    parcel_to_text(parcel)
-                    for parcel in exact_parcels
+                    parcel_to_text(parcel) for parcel in exact_parcels
                 )
 
         finally:
@@ -160,10 +165,7 @@ def answer_question(
                 parcel_ids=parcel_ids,
             )
 
-            parcels_by_id = {
-                parcel.parcel_id: parcel
-                for parcel in exact_parcels
-            }
+            parcels_by_id = {parcel.parcel_id: parcel for parcel in exact_parcels}
 
             selected_parcels = [
                 parcels_by_id[parcel_id]
@@ -174,11 +176,8 @@ def answer_question(
         finally:
             db.close()
 
-        parcel_context = "\n\n".join(
-            result.payload["text"]
-            for result in parcel_results
-            if result.payload and result.payload.get("text")
-        )
+        # Vector results select candidates; current SQL records supply all facts.
+        parcel_context = "\n\n".join(parcel_to_text(parcel) for parcel in selected_parcels)
 
     # -------------------------
     # FINAL LLM ANSWER
@@ -197,6 +196,13 @@ def answer_question(
     - Never discuss or expose other investors or their inquiries.
     - Answer in the same language as the user.
     - Keep the answer concise and useful.
+    - Land type is authoritative: residential parcels need residential reasoning
+      (homes or residential development), commercial parcels need commercial reasoning.
+    - Never recommend residential land for showrooms, retail, warehouses, or other
+      commercial needs. If asked about those uses, explain that suitability is unconfirmed.
+    - For mixed types, explain each type separately; never apply one use to both.
+    - Area, street width, price, and transaction are facts, not proof of zoning approval,
+      commercial viability, investment returns, or permitted development.
 
     IMPORTANT UI RULES:
     - Parcel records will be displayed separately as UI cards.
@@ -241,10 +247,20 @@ def answer_question(
     {question}
     """
 
-    response = client.responses.create(
-        model="gpt-5-mini",
-        input=prompt,
+    instructions = comparison_instructions(selected_parcels) if explicit_comparison else (
+        "Use the supplied database records as the authoritative source. Follow the land-type "
+        "and privacy rules. Respond in the user's language. Never invent permitted uses or returns."
     )
+    instructions += (
+        "\nAnswer the user's question directly and stop when the answer is complete. "
+        "Do not add follow-up questions, invitations, or unsolicited offers such as "
+        "'If you want, I can...' or 'إذا تريد، أقدّم...'. "
+        "Never imply that Sarj or this assistant provides services or actions not explicitly "
+        "supported by the supplied system, including arranging viewings, providing reports "
+        "or checklists, verifying permissions, reserving land, or negotiating."
+    )
+    response = client.responses.create(model="gpt-5-mini", instructions=instructions, input=prompt)
+    answer = response.output_text
 
     # -------------------------
     # FORMAT PARCEL RESULTS
@@ -305,7 +321,7 @@ def answer_question(
             )
 
     return {
-        "answer": response.output_text,
+        "answer": answer,
         "parcels": parcels,
         "inquiries": inquiries if mode == "admin" else [],
     }

@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from landora_backend.models.parcel import Parcel
 
 from landora_backend.core.database import get_db
 from landora_backend.schemas.inquiry import (
@@ -65,6 +66,8 @@ def create_inquiry(
     inquiry_data: InquiryCreate,
     db: DBSession,
 ):
+    if inquiry_data.selected_parcel_id and not db.get(Parcel, inquiry_data.selected_parcel_id):
+        raise HTTPException(status_code=422, detail="Selected parcel does not exist")
     existing = inquiry_service.get_inquiry(
         db,
         inquiry_data.inquiry_id,

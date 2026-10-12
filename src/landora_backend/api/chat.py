@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from landora_backend.ai.chat import answer_question
 from landora_backend.schemas.chat import ChatRequest, ChatResponse
 
-
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -12,6 +11,7 @@ def investor_chat(request: ChatRequest):
     return answer_question(
         question=request.message,
         mode="investor",
+        parcel_ids=request.parcel_ids,
     )
 
 

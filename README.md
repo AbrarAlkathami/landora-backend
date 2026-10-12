@@ -359,3 +359,12 @@ The system extracts the same structured filters as the English equivalent and re
 ## License
 
 This project is currently maintained as a personal portfolio and experimental AI real-estate platform.
+# Structured website inquiries
+
+Explicit two-parcel investor comparisons are AI-generated using current SQL records and authoritative land-type instructions. Residential lands require housing/development reasoning; commercial lands require commercial space/access reasoning; mixed comparisons explain each type separately. The selected order is retained. Other AI answers receive land-type-specific instructions, and parcel search context is rebuilt from current database records rather than potentially stale vector text. No comparison answer is templated. Zoning approval and investment returns must not be inferred from land type.
+
+Website submissions separate investment purpose (`wants_to`) from readiness (`intent`: `exploring`, `comparing options`, `ready to move`). They capture canonical land type, area, transaction, and optional integer SAR budget. A budget requires a matching basis: `total purchase` for sale or `annual rent` for lease. New phone values normalize to international format, including local Saudi mobiles and Arabic digits.
+
+The nullable `selected_parcel_id` foreign key records the chosen land independently of purpose. Unknown parcel references are rejected by the API. Existing inquiry records remain unchanged.
+
+Before deploying these changes, run `alembic upgrade head` in the backend environment and restart the API. Migration `ea8f2d41b607` adds the parcel reference and index. It has been tested with existing records on a temporary SQLite database; it has not been applied to the live database by the coding agent.

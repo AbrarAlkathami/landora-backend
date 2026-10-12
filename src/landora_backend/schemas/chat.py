@@ -1,8 +1,11 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
     message: str
+    parcel_ids: list[str] | None = Field(default=None, min_length=1, max_length=2)
 
 
 class ParcelChatResult(BaseModel):
