@@ -1,15 +1,79 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from landora_backend.models.parcel import Parcel
 from landora_backend.schemas.parcel import ParcelCreate, ParcelUpdate
 
 
-def get_parcels(db: Session) -> list[Parcel]:
+def get_parcels(
+    db: Session,
+    page: int = 1,
+    page_size: int = 10,
+    search: str | None = None,
+    status: str | None = None,
+    land_type: str | None = None,
+    listing_type: str | None = None,
+):
     statement = select(Parcel)
-    return list(db.scalars(statement).all())
 
+    if search:
+        search_value = f"%{search}%"
 
+        statement = statement.where(
+            or_(
+                Parcel.parcel_id.ilike(search_value),
+                Parcel.district_en.ilike(search_value),
+                Parcel.district_ar.ilike(search_value),
+            )
+        )
+
+    if status:
+        statement = statement.where(
+            func.lower(Parcel.status) == status.lower()
+        )
+
+    if land_type:
+        statement = statement.where(
+            func.lower(Parcel.land_type) == land_type.lower()
+        )
+
+    if listing_type:
+        statement = statement.where(
+            func.lower(Parcel.listing_type) == listing_type.lower()
+        )
+
+    count_statement = select(func.count()).select_from(
+        statement.subquery()
+    )
+
+    total = db.scalar(count_statement) or 0
+
+    offset = (page - 1) * page_size
+
+    statement = (
+        statement
+        .order_by(Parcel.parcel_id)
+        .offset(offset)
+        .limit(page_size)
+    )
+
+    items = list(db.scalars(statement).all())
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total > 0
+        else 0
+    )
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
+
+    
 def get_parcel(db: Session, parcel_id: str) -> Parcel | None:
     return db.get(Parcel, parcel_id)
 

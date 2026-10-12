@@ -1,10 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from landora_backend.core.database import get_db
 from landora_backend.schemas.parcel import (
+    PaginatedParcelsResponse,
     ParcelCreate,
     ParcelResponse,
     ParcelUpdate,
@@ -20,10 +21,25 @@ router = APIRouter(
 DBSession = Annotated[Session, Depends(get_db)]
 
 
-@router.get("/", response_model=list[ParcelResponse])
-def get_parcels(db: DBSession):
-    return parcel_service.get_parcels(db)
-
+@router.get("/", response_model=PaginatedParcelsResponse)
+def get_parcels(
+    db: DBSession,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    search: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+    land_type: str | None = None,
+    listing_type: str | None = None,
+):
+    return parcel_service.get_parcels(
+        db=db,
+        page=page,
+        page_size=page_size,
+        search=search,
+        status=status_filter,
+        land_type=land_type,
+        listing_type=listing_type,
+    )
 
 @router.get("/{parcel_id}", response_model=ParcelResponse)
 def get_parcel(parcel_id: str, db: DBSession):

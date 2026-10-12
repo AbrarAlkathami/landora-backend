@@ -47,3 +47,10 @@ class ParcelResponse(ParcelBase):
     parcel_id: str
 
     model_config = ConfigDict(from_attributes=True)
+
+class PaginatedParcelsResponse(BaseModel):
+    items: list[ParcelResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
