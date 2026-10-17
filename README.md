@@ -1,372 +1,210 @@
-# Landora Backend
+# Sarj Real Estate — Backend
 
-Backend service for **Landora**, an AI-powered Riyadh land discovery and investor inquiry platform.
-
-The backend provides structured parcel and inquiry management, semantic search, exact database filtering, and grounded AI responses using PostgreSQL, Qdrant, and OpenAI.
-
-## Tech Stack
-
-- Python 3.12
-- FastAPI
-- PostgreSQL
-- SQLAlchemy
-- Alembic
-- Qdrant
-- OpenAI API
-- Pydantic
-- uv
+FastAPI service for Sarj's Riyadh land discovery and leadership intelligence product. PostgreSQL stores the portfolio and investor pipeline; real LLM endpoints answer investor and admin questions using current records.
 
 ## Features
 
-- Parcel management
-- Investor inquiry management
-- PostgreSQL-based exact filtering
-- Qdrant semantic search
-- Hybrid SQL + vector retrieval
-- Structured filter extraction from natural language
-- Arabic and English AI queries
-- Grounded AI responses using actual portfolio data
-- Structured chat responses with matched parcels and inquiries
+- Parcel and inquiry CRUD, search, filters, and pagination.
+- Structured investor inquiries: separate purpose, readiness, preferences, budget basis, and optional parcel reference.
+- Validation of new land records, duplicate IDs, and selected parcel references.
+- Investor AI discovery and comparisons grounded in current parcel facts.
+- Admin AI analysis grounded in a complete SQL snapshot and computed business metrics.
+- Optional Qdrant semantic retrieval for investor discovery.
+- Dashboard statistics and a documented OpenAPI interface.
 
-## Architecture
+The public assessment demo has no authentication or permissions layer.
 
-```text
-User Question
-     |
-     v
-Filter Extraction
-     |
-     +--------------------+
-     |                    |
-     v                    v
-PostgreSQL             Qdrant
-Exact Filters       Semantic Search
-     |                    |
-     +---------+----------+
-               |
-               v
-        Retrieved Context
-               |
-               v
-            OpenAI
-               |
-               v
-      Grounded AI Response
+## Stack
+
+Python, FastAPI, Pydantic, SQLAlchemy, PostgreSQL with psycopg, Alembic, OpenAI, and Qdrant. Python **3.12** is the tested local runtime; use `uv` to install and run the project.
+
+The current model is `gpt-5-mini`; embeddings use `text-embedding-3-small`.
+
+## Local setup
+
+Run commands from this repository's root. Prepare a PostgreSQL database and a reachable Qdrant service first.
+
+```bash
+uv sync
+cp .env.example .env.local
 ```
 
-PostgreSQL is the source of truth for structured and numeric data.
-
-Qdrant is used as a semantic index for meaning-based retrieval.
-
-The LLM only answers using retrieved Landora context.
-
-## Project Structure
-
-```text
-landora-backend/
-├── data/
-├── migrations/
-├── src/
-│   └── landora_backend/
-│       ├── ai/
-│       │   ├── chat.py
-│       │   ├── embeddings.py
-│       │   └── filter_extractor.py
-│       ├── api/
-│       │   ├── chat.py
-│       │   ├── inquiries.py
-│       │   ├── parcels.py
-│       │   ├── router.py
-│       │   └── search.py
-│       ├── core/
-│       │   ├── config.py
-│       │   └── database.py
-│       ├── models/
-│       │   ├── inquiry.py
-│       │   └── parcel.py
-│       ├── schemas/
-│       │   ├── chat.py
-│       │   ├── inquiry.py
-│       │   └── parcel.py
-│       ├── scripts/
-│       │   ├── seed_inquiries.py
-│       │   └── seed_parcels.py
-│       ├── services/
-│       │   ├── inquiry_service.py
-│       │   └── parcel_service.py
-│       ├── vector/
-│       │   ├── documents.py
-│       │   ├── index_data.py
-│       │   ├── qdrant.py
-│       │   ├── qdrant_collections.py
-│       │   └── search.py
-│       └── main.py
-├── .env.example
-├── alembic.ini
-└── pyproject.toml
-```
-
-## Environment Variables
-
-Create:
-
-```text
-.env.local
-```
-
-Example:
+If `.env.local` already exists, edit it rather than replacing it. Configure:
 
 ```env
+APP_NAME=Landora API
 ENVIRONMENT=local
-
-DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5432/landora
-
-OPENAI_API_KEY=your_openai_api_key
-
-QDRANT_URL=https://your-qdrant-cluster.qdrant.io
-QDRANT_API_KEY=your_qdrant_api_key
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=
 ```
 
-Do not commit `.env.local` or production secrets.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | SQLAlchemy PostgreSQL connection URL, using the psycopg driver. |
+| `OPENAI_API_KEY` | Model and embedding access. Configure before starting the API because model clients are imported at startup. |
+| `QDRANT_URL` | Local or hosted Qdrant URL; required by the settings model. |
+| `QDRANT_API_KEY` | Optional for local Qdrant; use the hosted service key when required. |
+| `ENVIRONMENT` | Process setting used to select `.env.local` or `.env.production`. |
+| `APP_NAME` | Application setting, defaulting to `Landora API`. |
 
-## Installation
+Environment files and credentials are ignored by Git. Frontend environment variables contain API URLs, not database or model credentials.
 
-Install dependencies:
-
-```bash
-uv sync
-```
-
-If Python 3.12 is not installed:
-
-```bash
-uv python install 3.12
-uv python pin 3.12
-uv sync
-```
-
-## Database Setup
-
-Create a PostgreSQL database named:
-
-```text
-landora
-```
-
-Run migrations:
+## Migrations and provided data
 
 ```bash
 uv run alembic upgrade head
-```
-
-## Seed Data
-
-Seed parcels:
-
-```bash
 PYTHONPATH=src uv run python src/landora_backend/scripts/seed_parcels.py
-```
-
-Seed investor inquiries:
-
-```bash
 PYTHONPATH=src uv run python src/landora_backend/scripts/seed_inquiries.py
 ```
 
-The current dataset contains:
+Seed scripts skip existing IDs. They populate missing records; they do not reset modified records to their original values.
 
-- 120 Riyadh land parcels
-- 48 investor inquiries
+The supplied snapshot is dated **11 August 2026**:
 
-## Qdrant Setup
+| Data | Count |
+| --- | ---: |
+| Land parcels | 120 |
+| Riyadh districts | 88 |
+| Available parcels | 62 |
+| Sold / leased / reserved | 29 / 13 / 16 |
+| Existing investor inquiries | 48 |
 
-Create the required collections and payload indexes:
+Source files are `data/sarj-lands-riyadh.json` and `data/investor-inquiries.json`. Keep all original parcel and inquiry IDs accounted for in the assessment demo. Null prices remain null, and days on market are the reported snapshot values.
+
+Migration `ea8f2d41b607` adds the nullable `selected_parcel_id` foreign key. Apply it before using inquiry creation/editing with parcel references. Deleting a referenced parcel clears that reference rather than deleting the inquiry.
+
+## Semantic retrieval setup
+
+After seeding, create collections and index the records:
 
 ```bash
 PYTHONPATH=src uv run python src/landora_backend/vector/qdrant_collections.py
-```
-
-Index PostgreSQL data into Qdrant:
-
-```bash
 PYTHONPATH=src uv run python src/landora_backend/vector/index_data.py
 ```
 
-The current collections are:
+Collections: `landora_parcels` and `landora_inquiries`. Indexing calls the embedding provider and requires configured credentials.
 
-```text
-landora_parcels
-landora_inquiries
-```
+Investor semantic discovery requires this setup. Exact selected-parcel comparisons and the current admin AI path use SQL records directly. CRUD writes do not automatically update the vector index.
 
-## Running the API
-
-Start the development server:
+## Start the API
 
 ```bash
-uv run uvicorn landora_backend.main:app --reload --app-dir src
+uv run uvicorn landora_backend.main:app --reload --app-dir src --port 8000
 ```
 
-API:
+- API base: `http://localhost:8000/api/v1`
+- Interactive API docs: `http://localhost:8000/docs`
+- OpenAPI schema: `http://localhost:8000/openapi.json`
 
-```text
-http://localhost:8000
-```
+Configure the frontend's `API_URL` as `http://localhost:8000/api/v1`. Its active investor and admin views use same-origin Next.js proxies. The backend's direct-browser CORS allowlist currently contains `http://localhost:3000`.
 
-Swagger documentation:
+## API overview
 
-```text
-http://localhost:8000/docs
-```
+All paths below are relative to `/api/v1`.
 
-## Main API Endpoints
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET / POST | `/parcels/` | Paginated portfolio / create a parcel |
+| GET / PATCH / DELETE | `/parcels/{parcel_id}` | Read, edit or delete a parcel |
+| GET / POST | `/inquiries/` | Paginated pipeline / create an inquiry |
+| GET / PATCH / DELETE | `/inquiries/{inquiry_id}` | Read, edit or delete an inquiry |
+| POST | `/chat/investor` | Investor LLM discovery, questions and comparisons |
+| POST | `/chat/admin` | Leadership LLM analysis of current business records |
+| GET | `/search/parcels` | Semantic retrieval using `q` and optional `limit` |
+| GET | `/dashboard/stats` | Existing dashboard aggregate endpoint |
 
-### Parcels
+Collection requests accept `page` and `page_size`; the maximum page size is 100. Read every page to obtain the complete original portfolio.
 
-```text
-GET    /api/v1/parcels/
-GET    /api/v1/parcels/{parcel_id}
-POST   /api/v1/parcels/
-PATCH  /api/v1/parcels/{parcel_id}
-DELETE /api/v1/parcels/{parcel_id}
-```
-
-### Investor Inquiries
-
-```text
-GET    /api/v1/inquiries/
-GET    /api/v1/inquiries/{inquiry_id}
-POST   /api/v1/inquiries/
-PATCH  /api/v1/inquiries/{inquiry_id}
-DELETE /api/v1/inquiries/{inquiry_id}
-```
-
-### Semantic Search
-
-```text
-GET /api/v1/search/parcels
-```
-
-Example:
-
-```text
-/api/v1/search/parcels?q=commercial land suitable for a showroom
-```
-
-### AI Chat
-
-```text
-POST /api/v1/chat
-```
-
-Example request:
+### Chat requests
 
 ```json
 {
-  "message": "Show me commercial land in East Riyadh under 8 million suitable for a showroom"
+  "message": "Find available commercial land in East Riyadh"
 }
 ```
 
-Example response:
+For an investor question about selected lands, add one or two real IDs:
 
 ```json
 {
-  "answer": "I found several matching commercial parcels...",
-  "parcels": [
-    {
-      "parcel_id": "SRE-001",
-      "district_en": "Al Khalidiyah",
-      "district_ar": "الخالدية",
-      "land_type": "commercial",
-      "listing_type": "sale",
-      "status": "available",
-      "total_price_sar": 7500000
-    }
-  ],
-  "inquiries": []
+  "message": "Compare these two parcels",
+  "parcel_ids": ["SRE-041", "SRE-104"]
 }
 ```
 
-## AI Retrieval Strategy
+Responses contain `answer`, `parcels`, and `inquiries`. Investor responses do not expose the inquiry pipeline.
 
-Landora uses hybrid retrieval.
+### How the AI is grounded
 
-Exact questions such as:
+**Investor:** the model extracts filters; SQL applies factual constraints, and semantic retrieval can rank candidates. Current SQL records supply the facts. Explicit parcel IDs bypass semantic retrieval. Comparisons are AI-generated with authoritative residential/commercial classifications and separate purchase/annual-rent reasoning.
 
-```text
-commercial land in East Riyadh under 8 million
+**Admin:** `ai/admin.py` reads the full current portfolio and pipeline, computes status and demand counts, unmatched inquiry IDs, oldest available listings, and separate budget averages. The LLM generates a structured explanation and selects up to five parcel/inquiry references. Returned IDs are checked against the snapshot. There is no scripted answer fallback.
+
+Both advisors respond in the question's language and are instructed to avoid invented facts, returns, permissions, unsupported services, and unsolicited follow-up offers. These prompt constraints still need evaluation against live model responses.
+
+### Inquiry fields
+
+- `wants_to`: investment purpose.
+- `intent`: `exploring`, `comparing options`, or `ready to move` for new submissions.
+- `prefers`: `sale`, `lease`, or `any`.
+- `budget_sar`: optional positive integer SAR amount.
+- `budget_basis`: `total purchase` for buying or `annual rent` for leasing; absent when no budget is supplied.
+- `selected_parcel_id`: optional parcel reference, stored separately from free text.
+
+New inquiry phone numbers normalize Saudi local numbers and Arabic digits to international format. The API rejects unknown selected parcel IDs.
+
+## Verification
+
+```bash
+uv run pytest tests -q
 ```
 
-are handled using PostgreSQL filters.
+Tests cover inquiry structure, existing seed compatibility, land-type comparison instructions, complete admin snapshots, demand/matching logic, and generated-response wiring. Model responses are mocked; tests do not certify live generation quality.
 
-Semantic questions such as:
+A database-independent test configuration can use:
 
-```text
-land suitable for a car showroom
+```bash
+DATABASE_URL=sqlite:// QDRANT_URL=http://localhost:6333 uv run pytest tests -q
 ```
 
-are handled using Qdrant embeddings.
+An optional local API read check:
 
-Mixed questions such as:
-
-```text
-commercial land in East Riyadh under 8 million suitable for a showroom
+```bash
+curl 'http://localhost:8000/api/v1/parcels/?page=1&page_size=100'
 ```
 
-use:
+Use disposable data for mutation checks. Verify original ID coverage in the final demo database, not just the row count.
 
-```text
-PostgreSQL filtering
-        +
-Qdrant semantic ranking
-        +
-OpenAI grounded response
+## Deployment
+
+The product has not yet been publicly deployed. Supply the database, model and Qdrant settings through the hosting platform's environment. If using `.env.production`, set `ENVIRONMENT=production` in the process environment **before** running migrations or starting the API; file selection happens before dotenv values are loaded.
+
+```bash
+ENVIRONMENT=production uv run alembic upgrade head
+ENVIRONMENT=production uv run uvicorn landora_backend.main:app --app-dir src --host 0.0.0.0 --port 8000
 ```
 
-This keeps numeric and structured answers accurate while still supporting natural-language search.
+Set the server port to the hosting platform's assigned port. Deploy the frontend with the publicly reachable `/api/v1` URL. Keep hosting, database, model access and required retrieval services available for at least two weeks after the assessment deadline.
 
-## Arabic Support
-
-The AI layer supports both Arabic and English queries.
-
-Example:
+## Project structure
 
 ```text
-أبغى أرض تجارية شرق الرياض بأقل من ٨ مليون
+src/landora_backend/
+├── api/              HTTP routes
+├── ai/               Investor/admin LLM grounding, filters and embeddings
+├── core/             Settings and database sessions
+├── models/           SQLAlchemy parcel and inquiry models
+├── schemas/          Request/response validation
+├── services/         Database queries and mutations
+├── scripts/          Provided-data seeding
+└── vector/           Qdrant documents, collections and search
+migrations/           Alembic schema history
+data/                 Original assessment datasets
+tests/                Automated checks
 ```
 
-The system extracts the same structured filters as the English equivalent and returns a response in the user's language.
+## Known limitations
 
-## Development Notes
-
-- PostgreSQL is the source of truth.
-- Qdrant should not be treated as the authoritative database.
-- Parcel and inquiry IDs must never be invented by the AI.
-- AI responses should only use retrieved Landora data.
-- Qdrant payloads may need to be re-indexed when searchable fields change.
-- Database schema changes should be managed through Alembic migrations.
-
-## Roadmap
-
-- Frontend integration with Next.js
-- Chat UI with parcel and inquiry cards
-- Map-based parcel exploration
-- Admin analytics dashboard
-- Better ranking and relevance evaluation
-- Automated vector synchronization after database updates
-- Production deployment
-
-## License
-
-This project is currently maintained as a personal portfolio and experimental AI real-estate platform.
-# Structured website inquiries
-
-Admin Sarj Intelligence now uses the LLM through `/api/v1/chat/admin`. `ai/admin.py` reads a complete current SQL snapshot, computes portfolio/demand counts, unmatched inquiries, oldest available parcels, and separate purchase/lease budget averages, then requests a structured AI-generated answer. Returned record IDs are checked against the snapshot. No vector retrieval or scripted answer fallback is used for admin leadership questions. Existing `OPENAI_API_KEY` configuration is required; restart the API after updating. Automated tests mock model responses, so they verify grounding and wiring rather than live generation quality.
-
-Explicit two-parcel investor comparisons are AI-generated using current SQL records and authoritative land-type instructions. Residential lands require housing/development reasoning; commercial lands require commercial space/access reasoning; mixed comparisons explain each type separately. The selected order is retained. Other AI answers receive land-type-specific instructions, and parcel search context is rebuilt from current database records rather than potentially stale vector text. No comparison answer is templated. Zoning approval and investment returns must not be inferred from land type.
-
-Website submissions separate investment purpose (`wants_to`) from readiness (`intent`: `exploring`, `comparing options`, `ready to move`). They capture canonical land type, area, transaction, and optional integer SAR budget. A budget requires a matching basis: `total purchase` for sale or `annual rent` for lease. New phone values normalize to international format, including local Saudi mobiles and Arabic digits.
-
-The nullable `selected_parcel_id` foreign key records the chosen land independently of purpose. Unknown parcel references are rejected by the API. Existing inquiry records remain unchanged.
-
-Before deploying these changes, run `alembic upgrade head` in the backend environment and restart the API. Migration `ea8f2d41b607` adds the parcel reference and index. It has been tested with existing records on a temporary SQLite database; it has not been applied to the live database by the coding agent.
+Conversation history is not currently included in chat requests. Vector indexing is a separate operation. The API has no authentication or roles, and permanent deletion does not protect original assessment records. Historical snapshots, verified weekly trends, and conversion instrumentation are outside the current implementation. Public deployment and real model calls must be verified before submission.
